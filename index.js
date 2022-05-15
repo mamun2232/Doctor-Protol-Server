@@ -4,6 +4,7 @@ const cors = require('cors')
 const port = process.env.PORT || 5000
 require('dotenv').config()
 const { MongoClient, ServerApiVersion } = require('mongodb');
+const jwt = require('jsonwebtoken');
 
 // middale ware 
 app.use(cors())
@@ -16,11 +17,35 @@ const uri = `mongodb+srv://myAdmin:GnbWOPxkDrjF7ohN@admin.lzlwc.mongodb.net/myFi
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 
 
+
+// varifay jwt token 
+function verifayJwt (req , res , next){
+      const authHeader = req.headers.authorization
+
+      if(!authHeader){
+            return res.status(401).send({massage : 'Unauthorization Access'})
+
+      }
+      const token = authHeader.split(' ')[1]
+      console.log(token);
+      jwt.verify(token, process.env.ACCESS_TOKEN, function(err, decoded) {
+            if(err){
+                  return res.status(403).send({massage : 'Forbidden Access'})
+
+            }
+            req.decoded = decoded
+            next()
+          });
+      
+}
+
+
 async function run() {
       try {
             await client.connect();
             const serviceCollection = client.db("patient").collection("service");
             const bookingsCollection = client.db("patient").collection("booking");
+            const usersCollection = client.db("patient").collection("user");
 
             // read to mongodb 
 
@@ -35,7 +60,7 @@ async function run() {
             //----------- booking caletion 
             // booking korar fole eki bokking bar bar korte partesi eti solve jonno 
             app.post('/booking', async (req, res) => {
-                  
+
 
                   // step 1 check booking jeta add hoise
                   const booking = req.body
@@ -50,51 +75,84 @@ async function run() {
                   const exists = await bookingsCollection.findOne(query)
 
                   // step 3 - chack candition 
-                  if(exists){
-                       return res.send({success: false , booking: exists})
+                  if (exists) {
+                        return res.send({ success: false, booking: exists })
                   }
 
                   const result = await bookingsCollection.insertOne(booking)
-                  return res.send({success: true , result})
+                  return res.send({ success: true, result })
             })
 
 
             // je slot gula booking hoise segula jevabe soriye felbo 
-            app.get('/available', async(req, res) =>{
+            app.get('/available', async (req, res) => {
                   const date = req.query.date;
-            
+
                   // step 1:  get all services
                   const services = await serviceCollection.find().toArray();
-            
+
                   // step 2: get the booking of that day. output: [{}, {}, {}, {}, {}, {}]
-                  const query = {date: date};
+                  const query = { date: date };
                   const bookings = await bookingsCollection.find(query).toArray();
-            
+
                   // step 3: for each service
-                  services.forEach(service=>{
-                    // step 4: find bookings for that service. output: [{}, {}, {}, {}]
-                    const serviceBookings = bookings.filter(book => book.treatment === service.name);
-                    // step 5: select slots for the service Bookings: ['', '', '', '']
-                    const bookedSlots = serviceBookings.map(book => book.slot);
-                    // step 6: select those slots that are not in bookedSlots
-                    const available = service.slots.filter(slot => !bookedSlots.includes(slot));
-                    //step 7: set available to slots to make it easier 
-                    service.slots = available;
+                  services.forEach(service => {
+                        // step 4: find bookings for that service. output: [{}, {}, {}, {}]
+                        const serviceBookings = bookings.filter(book => book.treatment === service.name);
+                        // step 5: select slots for the service Bookings: ['', '', '', '']
+                        const bookedSlots = serviceBookings.map(book => book.slot);
+                        // step 6: select those slots that are not in bookedSlots
+                        const available = service.slots.filter(slot => !bookedSlots.includes(slot));
+                        //step 7: set available to slots to make it easier 
+                        service.slots = available;
                   });
                   res.send(services);
-                })
+            })
 
 
 
             // booking caletion to read my booking service 
-            app.get('/myBooking' , async (req , res) =>{
+            app.get('/myBooking', verifayJwt , async (req, res) => {
                   const patient = req.query.patient
-                  const query = {patient: patient}
-                  const booking = await bookingsCollection.find(query).toArray()
-                  res.send(booking)
+                  const query = { patient: patient }
+
+                  // token valid chack 
+                  const decodedEmail = req.decoded.email
+                  if(patient === decodedEmail){
+                        const booking = await bookingsCollection.find(query).toArray()
+                        res.send(booking)
+
+                  }
+                  else{
+                      return res.status(403).send({massage : 'Forbidden Access'})
+                  }
+                 
             })
 
-           
+
+            // create user to server add 
+            app.put('/user/:email' , async (req , res) => {
+                  const email = req.params.email
+                  console.log(email);
+                  const user = req.body
+                  const filter = {email: email}
+                  const options = { upsert: true };
+                  const updateDoc = {
+                        $set: user
+                        
+                      };
+                  // create jwt token 
+                  const token = jwt.sign({email: email} , process.env.ACCESS_TOKEN , {expiresIn: '1h'});
+                  console.log(token);
+                  
+                  const result = await usersCollection.updateOne(filter, updateDoc, options)
+                      res.send({result , token})
+            })
+
+            // Load user to server 
+            app.get('/user')
+
+
 
       }
 
