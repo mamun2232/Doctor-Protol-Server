@@ -19,20 +19,20 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 async function run() {
       try {
             await client.connect();
-            const patientCollection = client.db("patient").collection("service");
+            const serviceCollection = client.db("patient").collection("service");
             const bookingsCollection = client.db("patient").collection("booking");
 
             // read to mongodb 
 
             app.get('/service', async (req, res) => {
                   const query = {}
-                  const cursor = patientCollection.find(query)
+                  const cursor = serviceCollection.find(query)
                   const service = await cursor.toArray()
                   res.send(service)
             })
 
 
-            // booking caletion 
+            //----------- booking caletion 
             // booking korar fole eki bokking bar bar korte partesi eti solve jonno 
             app.post('/booking', async (req, res) => {
                   
@@ -58,6 +58,42 @@ async function run() {
                   return res.send({success: true , result})
             })
 
+
+            // je slot gula booking hoise segula jevabe soriye felbo 
+            app.get('/available', async(req, res) =>{
+                  const date = req.query.date;
+            
+                  // step 1:  get all services
+                  const services = await serviceCollection.find().toArray();
+            
+                  // step 2: get the booking of that day. output: [{}, {}, {}, {}, {}, {}]
+                  const query = {date: date};
+                  const bookings = await bookingsCollection.find(query).toArray();
+            
+                  // step 3: for each service
+                  services.forEach(service=>{
+                    // step 4: find bookings for that service. output: [{}, {}, {}, {}]
+                    const serviceBookings = bookings.filter(book => book.treatment === service.name);
+                    // step 5: select slots for the service Bookings: ['', '', '', '']
+                    const bookedSlots = serviceBookings.map(book => book.slot);
+                    // step 6: select those slots that are not in bookedSlots
+                    const available = service.slots.filter(slot => !bookedSlots.includes(slot));
+                    //step 7: set available to slots to make it easier 
+                    service.slots = available;
+                  });
+                  res.send(services);
+                })
+
+
+
+            // booking caletion to read my booking service 
+            app.get('/myBooking' , async (req , res) =>{
+                  const patient = req.query.patient
+                  const query = {patient: patient}
+                  const booking = await bookingsCollection.find(query).toArray()
+                  res.send(booking)
+            })
+
            
 
       }
@@ -69,18 +105,6 @@ async function run() {
 }
 
 run().catch(console.dir)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
