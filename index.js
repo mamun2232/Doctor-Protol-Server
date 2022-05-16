@@ -19,24 +19,24 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 
 
 // varifay jwt token 
-function verifayJwt (req , res , next){
+function verifayJwt(req, res, next) {
       const authHeader = req.headers.authorization
 
-      if(!authHeader){
-            return res.status(401).send({massage : 'Unauthorization Access'})
+      if (!authHeader) {
+            return res.status(401).send({ massage: 'Unauthorization Access' })
 
       }
       const token = authHeader.split(' ')[1]
       console.log(token);
-      jwt.verify(token, process.env.ACCESS_TOKEN, function(err, decoded) {
-            if(err){
-                  return res.status(403).send({massage : 'Forbidden Access'})
+      jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
+            if (err) {
+                  return res.status(403).send({ massage: 'Forbidden Access' })
 
             }
             req.decoded = decoded
             next()
-          });
-      
+      });
+
 }
 
 
@@ -65,20 +65,16 @@ async function run() {
                   // step 1 check booking jeta add hoise
                   const booking = req.body
                   console.log(booking);
-
                   const query = {
                         treatment: booking.treatment, date: booking.date, patient: booking.patient
                   }
                   console.log(query);
-
                   // step 2- find query
                   const exists = await bookingsCollection.findOne(query)
-
                   // step 3 - chack candition 
                   if (exists) {
                         return res.send({ success: false, booking: exists })
                   }
-
                   const result = await bookingsCollection.insertOne(booking)
                   return res.send({ success: true, result })
             })
@@ -112,45 +108,92 @@ async function run() {
 
 
             // booking caletion to read my booking service 
-            app.get('/myBooking', verifayJwt , async (req, res) => {
+            app.get('/myBooking', verifayJwt, async (req, res) => {
                   const patient = req.query.patient
                   const query = { patient: patient }
 
                   // token valid chack 
                   const decodedEmail = req.decoded.email
-                  if(patient === decodedEmail){
+                  if (patient === decodedEmail) {
                         const booking = await bookingsCollection.find(query).toArray()
                         res.send(booking)
+                  }
+                  else {
+                        return res.status(403).send({ massage: 'Forbidden Access' })
+                  }
 
-                  }
-                  else{
-                      return res.status(403).send({massage : 'Forbidden Access'})
-                  }
-                 
             })
 
 
-            // create user to server add 
-            app.put('/user/:email' , async (req , res) => {
+            // create user and add to dataBase 
+            app.put('/user/:email', async (req, res) => {
                   const email = req.params.email
                   console.log(email);
                   const user = req.body
-                  const filter = {email: email}
+                  const filter = { email: email }
                   const options = { upsert: true };
                   const updateDoc = {
                         $set: user
-                        
-                      };
+
+                  };
                   // create jwt token 
-                  const token = jwt.sign({email: email} , process.env.ACCESS_TOKEN , {expiresIn: '1h'});
+                  const token = jwt.sign({ email: email }, process.env.ACCESS_TOKEN, { expiresIn: '1h' });
                   console.log(token);
-                  
+
                   const result = await usersCollection.updateOne(filter, updateDoc, options)
-                      res.send({result , token})
+                  res.send({ result, token })
             })
 
-            // Load user to server 
-            app.get('/user')
+            // Load user to database 
+            app.get('/user', verifayJwt, async (req, res) => {
+                  const query = {}
+                  const user = await usersCollection.find(query).toArray()
+                  res.send(user)
+            })
+
+
+            // Make a Admin and add to dataBase
+            // note: ekhane jest userCaletion e role name Admin add kore decci 
+            app.put('/user/admin/:email', verifayJwt, async (req, res) => {
+                  const email = req.params.email
+
+                  // jekuno user admin baniye feltse eti thekanor jonno 
+                  const requester = req.decoded.email
+                  // chack korbo email ta ache kinaa 
+                  const requesterAccount = await usersCollection.findOne({ email: requester })
+                  // ebar role ta chack korbo 
+                  if (requesterAccount.role === 'admin') {
+                        const filter = { email: email }
+                        const updateDoc = {
+                              $set: { role: 'admin' }
+
+                        };
+                        const result = await usersCollection.updateOne(filter, updateDoc)
+                        res.send(result)
+
+                  }
+                  else{
+                        res.status(403).send({message : 'Forbidden Access'})
+                  }
+
+                  // admin hole sob user ke dekabo tar jonno ja korte hobe 
+                  app.get('/admin/:email', verifayJwt , async (req, res) =>{
+                        const email = req.params.email
+                        // ebar role cheack korbo 
+                        const user = await usersCollection.findOne({email: email})
+
+                        const isAdmin = user.role === 'admin'
+                        res.send({admin : isAdmin})
+
+
+                        
+                  })
+
+
+
+
+            })
+
 
 
 
