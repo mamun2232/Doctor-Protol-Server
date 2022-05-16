@@ -21,13 +21,10 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 // varifay jwt token 
 function verifayJwt(req, res, next) {
       const authHeader = req.headers.authorization
-
       if (!authHeader) {
             return res.status(401).send({ massage: 'Unauthorization Access' })
-
       }
       const token = authHeader.split(' ')[1]
-      console.log(token);
       jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
             if (err) {
                   return res.status(403).send({ massage: 'Forbidden Access' })
@@ -60,15 +57,11 @@ async function run() {
             //----------- booking caletion 
             // booking korar fole eki bokking bar bar korte partesi eti solve jonno 
             app.post('/booking', async (req, res) => {
-
-
                   // step 1 check booking jeta add hoise
                   const booking = req.body
-                  console.log(booking);
                   const query = {
                         treatment: booking.treatment, date: booking.date, patient: booking.patient
                   }
-                  console.log(query);
                   // step 2- find query
                   const exists = await bookingsCollection.findOne(query)
                   // step 3 - chack candition 
@@ -128,7 +121,6 @@ async function run() {
             // create user and add to dataBase 
             app.put('/user/:email', async (req, res) => {
                   const email = req.params.email
-                  console.log(email);
                   const user = req.body
                   const filter = { email: email }
                   const options = { upsert: true };
@@ -138,8 +130,6 @@ async function run() {
                   };
                   // create jwt token 
                   const token = jwt.sign({ email: email }, process.env.ACCESS_TOKEN, { expiresIn: '1h' });
-                  console.log(token);
-
                   const result = await usersCollection.updateOne(filter, updateDoc, options)
                   res.send({ result, token })
             })
@@ -174,24 +164,17 @@ async function run() {
                   }
                   else{
                         res.status(403).send({message : 'Forbidden Access'})
-                  }
+                  } })
 
-                  // admin hole sob user ke dekabo tar jonno ja korte hobe 
-                  app.get('/admin/:email', verifayJwt , async (req, res) =>{
-                        const email = req.params.email
-                        // ebar role cheack korbo 
-                        const user = await usersCollection.findOne({email: email})
-
-                        const isAdmin = user.role === 'admin'
-                        res.send({admin : isAdmin})
-
-
-                        
-                  })
-
-
-
-
+               // admin hole sob user ke dekabo tar jonno ja korte hobe 
+            app.get('/admin/:email', verifayJwt , async (req , res) =>{
+                  const email = req.params.email
+                  console.log(email);
+                  // ebar role cheack korbo 
+                  const user = await usersCollection.findOne({email: email})
+                  const isAdmin = user.role === 'admin'
+                  res.send({admin : isAdmin})
+                  
             })
 
 
