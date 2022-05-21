@@ -3,8 +3,12 @@ const app = express()
 const cors = require('cors')
 const port = process.env.PORT || 5000
 require('dotenv').config()
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId, ObjectID } = require('mongodb');
 const jwt = require('jsonwebtoken');
+
+// payment 
+// step 6  : requre to stripe and show secrte key
+const stripe = require('stripe')('sk_test_51L1nmNCGpaTt0RU81oq26j6Ta7gwb9pGlOOwxjeXAQgefsXMvmRxFUopKE2St6GDbDpxjUug0KxRyqzL6oKarPcR00lqLjh70r');
 
 // middale ware 
 app.use(cors())
@@ -43,15 +47,37 @@ async function run() {
             const serviceCollection = client.db("patient").collection("service");
             const bookingsCollection = client.db("patient").collection("booking");
             const usersCollection = client.db("patient").collection("user");
+            const doctorCollection = client.db("patient").collection("doctor");
+            const paymentCollection = client.db("patient").collection("payment");
+
+
+            // verifay addmin 
+
+            const verifayAdmin = async (req , res , next)=>{
+                  const requester = req.decoded.email
+                  // chack korbo email ta ache kinaa 
+                  const requesterAccount = await usersCollection.findOne({ email: requester })
+                  // ebar role ta chack korbo 
+                  if (requesterAccount.role === 'admin'){
+                        next()
+                  }
+                  else {
+                        return res.status(403).send({ massage: 'Forbidden Access' })
+                  }
+                  
+
+            }
 
             // read to mongodb 
 
             app.get('/service', async (req, res) => {
                   const query = {}
-                  const cursor = serviceCollection.find(query)
+                  const cursor = serviceCollection.find(query).project({name : 1})
                   const service = await cursor.toArray()
                   res.send(service)
             })
+
+            
 
 
             //----------- booking caletion 
@@ -116,8 +142,32 @@ async function run() {
                   }
 
             })
+            // raed specipi service 
+            app.get('/booking/:id' , verifayJwt , async(req , res) =>{
+                  const id = req.params.id
+                  const query = {_id: ObjectId(id)}
+                  const result = await bookingsCollection.findOne(query)
+                  res.send(result)
+            })
 
+            // step : 11- payment hoye gele bokking calection update korbo(payment) 
+            app.patch('/booking/:id' , verifayJwt, async (req , res)=>{
+                  const id = req.params.id
+                  const payment = req.body
+                  const filter = {_id: ObjectId(id)}
+                  const updateDoc = {
+                        $set: {
+                              paid: true,
+                              transactionId: payment.transactionId
+                        }
+                  }
+                  const result = await bookingsCollection.updateOne(filter , updateDoc)
+                  // etike payment collection rakbo 
+                  const setPayment = await paymentCollection.insertOne(payment)
+                  res.send(updateDoc)
+            })
 
+                  //---------------------- crete admin -----------------------
             // create user and add to dataBase 
             app.put('/user/:email', async (req, res) => {
                   const email = req.params.email
@@ -169,13 +219,57 @@ async function run() {
                // admin hole sob user ke dekabo tar jonno ja korte hobe 
             app.get('/admin/:email', verifayJwt , async (req , res) =>{
                   const email = req.params.email
-                  console.log(email);
+               
                   // ebar role cheack korbo 
                   const user = await usersCollection.findOne({email: email})
                   const isAdmin = user.role === 'admin'
                   res.send({admin : isAdmin})
                   
             })
+
+
+
+            // add a doctor 
+            app.post('/doctor' , verifayJwt, verifayAdmin , async (req , res)=>{
+                  const addedDoctor = req.body
+                  const doctor = await doctorCollection.insertOne(addedDoctor)
+                  res.send({success: "Doctor Added SuccessFull"})
+            })
+
+            // read doctor 
+            app.get('/doctor' , verifayJwt , verifayAdmin , async (req , res) =>{
+                  const query = {}
+                  const doctor = await doctorCollection.find(query).toArray()
+                  res.send(doctor)
+            })
+
+            app.delete('/doctor/:email' ,verifayJwt, verifayAdmin, async (req , res) =>{
+                  const email = req.params.email
+                  const filter = {email: email}
+                  const result = await doctorCollection.deleteOne(filter)
+                  res.send(result)
+
+
+      })
+
+      // payment method aplement 
+      app.post('/create-checkout-session', verifayJwt , async (req , res) =>{
+            const service = req.body
+            const price = service.price
+            // tk to conbrate to poisha 
+            const amount = price*100
+
+            // step -7: create paymentIntent and sekhane bole debo koto tk katbe 
+            const paymentIntent = await stripe.paymentIntents.create({
+                  amount: amount,
+                  currency: "usd",
+                  payment_method_types: ['card']
+                });
+                res.send({clientSecret: paymentIntent.client_secret})
+
+      })
+   
+
 
 
 
